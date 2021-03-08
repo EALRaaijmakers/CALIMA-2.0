@@ -1,0 +1,879 @@
+﻿using System;
+using System.Windows;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+
+namespace CalciumImagingAnalyser
+{
+	public class AnalysisWindow:Form
+	{
+		MainWindow mainWindow;
+		ListBox cellsListBox;
+		ImageMatrixCollection imageMatrixCollection;
+
+		PictureBox graphsBox, graphROC, graphSimilarity, mapActivity, mapConnections;
+
+		NumericUpDown pulseThreshold, settingPeakTreshold, settingLag, settingTreshold, settingInfluence, connectionDistance,
+			connectionDt, connectionTreshold, activityMaxSize, xCorrDelay;
+		Button detectionStageButton, exportCSVButton, saveActivityImageButton, saveConnectionImageButton, saveConnectionDataButton,
+			saveCorrelationImageButton, selectAllButton, saveGraphsImageButton;
+
+		GroupBox settingsGroup, connectionGroup, activityGroup, correlationGroup, test1, test2;
+
+		Label graph1Label, graph2Label, listLabel, xCorrDelayLabel;
+
+		ComboBox similarityMode;
+		ComboBox similaritySource;
+		ComboBox detectionMode;
+
+		CheckBox showPeaks, showConnectionBackground, showActivityBackground, showActivityLabels, showConnectionLabels, showActivityLegend;
+
+		List<BrainCell> shownCells;
+		ToolTip ToolTip;
+
+		public AnalysisWindow (MainWindow mainWindow, ImageMatrixCollection imageMatrixCollection)
+		{
+			this.mainWindow = mainWindow;
+			this.imageMatrixCollection = imageMatrixCollection;
+			this.Location = mainWindow.Location;
+			//this.WindowState = mainWindow.WindowState;
+			//this.Size = mainWindow.Size;
+			this.Width = Program.settings.XResolution;
+			this.Height = Program.settings.YResolution;
+			this.Text = "CalciumImagingAnalyser";
+			if (Program.settings.Fullscreen) {
+				this.WindowState = FormWindowState.Maximized;
+			} else {
+				this.WindowState = FormWindowState.Normal;
+			}
+			this.Icon = mainWindow.Icon;
+			this.Text = "CalciumImagingAnalyser";
+
+
+			pulseThreshold = new NumericUpDown ();
+			pulseThreshold.Minimum = 0m;
+			pulseThreshold.Maximum = 50m;
+			pulseThreshold.DecimalPlaces = 0;
+			pulseThreshold.Increment = 1m;
+			pulseThreshold.Value = 1m;
+			pulseThreshold.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			Controls.Add (pulseThreshold);
+
+			selectAllButton = new Button ();
+			selectAllButton.Text = "Select all shown";
+			selectAllButton.Click += delegate {
+				cellsListBox.SelectedIndexChanged -= CellsSelectedEvent;
+				for (int i = 0; i < cellsListBox.Items.Count; i++){
+					cellsListBox.SetSelected (i, true);
+				}
+				cellsListBox.SelectedIndexChanged += CellsSelectedEvent;
+				ShowGraphs ();
+			};
+			Controls.Add (selectAllButton);
+
+			SaveFileDialog saveImageDialog = new SaveFileDialog ();
+			saveImageDialog.DefaultExt = "png";
+			saveImageDialog.AddExtension = true;
+			saveImageDialog.Filter = "PNG Image|*.png";
+			saveImageDialog.InitialDirectory = Directory.GetCurrentDirectory ();
+
+			SaveFileDialog saveCSVDialog = new SaveFileDialog ();
+			saveCSVDialog.DefaultExt = "csv";
+			saveCSVDialog.AddExtension = true;
+			saveCSVDialog.Filter = "Comma-Separated Values|*.csv";
+			saveCSVDialog.InitialDirectory = Directory.GetCurrentDirectory ();
+
+			listLabel = new Label ();
+			listLabel.Text = "Min. spikes";
+			Controls.Add (listLabel);
+
+			exportCSVButton = new Button ();
+			exportCSVButton.Text = "Export to .csv";
+			exportCSVButton.Click += delegate {
+				List<BrainCell> selectedBrainCells = new List<BrainCell> ();
+				foreach (BrainCell b in cellsListBox.SelectedItems) {
+					selectedBrainCells.Add (b);
+				}
+				string data = imageMatrixCollection.cellActivityContainer.GetCSVData (selectedBrainCells);
+
+				if (data == null) {
+					MainWindow.ShowMessage ("Error: please record cell activity first, and select at least one cell.");
+				} else {
+					DialogResult result = saveCSVDialog.ShowDialog(); // Show the dialog.
+					if (result == DialogResult.OK) // Test result.
+					{
+						string filename = saveCSVDialog.FileName;
+						try
+						{
+							System.IO.File.WriteAllText(filename,data);
+							MainWindow.ShowMessage("Saved CSV data to " + filename + ".");						
+						} catch (IOException e) {
+							MainWindow.ShowMessage("Error saving file: " + e.Message);
+						}
+					}
+				}
+			};
+			Controls.Add (exportCSVButton);
+
+			detectionStageButton = new Button ();
+			detectionStageButton.Text = "Go to detection stage";
+			detectionStageButton.Click += delegate {
+				mainWindow.SetStageDetection ();
+			};
+			Controls.Add (detectionStageButton);
+
+			cellsListBox = new ListBox ();
+			cellsListBox.SelectionMode = SelectionMode.MultiExtended;
+			cellsListBox.SelectedIndexChanged += CellsSelectedEvent;
+			Controls.Add (cellsListBox);
+
+			settingsGroup = new GroupBox ();
+			settingsGroup.Text = "Spike detection";
+			Controls.Add (settingsGroup);
+
+			settingLag = new NumericUpDown ();
+			settingLag.Minimum = 1m;
+			settingLag.Maximum = 20m;
+			settingLag.DecimalPlaces = 0;
+			settingLag.Increment = 1m;
+			settingLag.Value = 5m;
+			settingLag.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			settingsGroup.Controls.Add (settingLag);
+
+			settingTreshold = new NumericUpDown ();
+			settingTreshold.Minimum = 0m;
+			settingTreshold.Maximum = 50m;
+			settingTreshold.DecimalPlaces = 1;
+			settingTreshold.Increment = 1m;
+			settingTreshold.Value = 5m;
+			settingTreshold.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			settingsGroup.Controls.Add (settingTreshold);
+
+			settingInfluence = new NumericUpDown ();
+			settingInfluence.Minimum = 0m;
+			settingInfluence.Maximum = 1m;
+			settingInfluence.DecimalPlaces = 2;
+			settingInfluence.Increment = .1m;
+			settingInfluence.Value = 0;
+			settingInfluence.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			settingsGroup.Controls.Add (settingInfluence);
+
+			settingPeakTreshold = new NumericUpDown ();
+			settingPeakTreshold.Minimum = 0m;
+			settingPeakTreshold.Maximum = 1m;
+			settingPeakTreshold.DecimalPlaces = 3;
+			settingPeakTreshold.Increment = .01m;
+			settingPeakTreshold.Value = .05m;
+			settingPeakTreshold.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			settingsGroup.Controls.Add (settingPeakTreshold);
+
+			showPeaks = new CheckBox ();
+			showPeaks.Checked = true;
+			showPeaks.Text = "Show Peaks";
+			showPeaks.CheckedChanged += delegate {
+				ShowGraphs ();
+			};
+			settingsGroup.Controls.Add (showPeaks);
+
+
+			detectionMode = new ComboBox ();
+			detectionMode.Items.Add (PeakMode.Slope);
+			detectionMode.Items.Add (PeakMode.Block);
+			detectionMode.SelectedIndex = 0;
+			detectionMode.SelectedIndexChanged += delegate {
+				ShowGraphs();
+			};
+			settingsGroup.Controls.Add (detectionMode);
+
+			saveGraphsImageButton = new Button ();
+			saveGraphsImageButton.Text = "Save image";
+			saveGraphsImageButton.Click += delegate {
+				DialogResult result = saveImageDialog.ShowDialog(); // Show the dialog.
+				if (result == DialogResult.OK) // Test result.
+				{
+					string filename = saveImageDialog.FileName;
+					try
+					{
+						Image img1 = graphsBox.Image;
+						Image img2 = graphROC.Image;
+						Bitmap bitmap = new Bitmap(img1.Width + img2.Width, Math.Max(img1.Height, img2.Height));
+						using (Graphics g = Graphics.FromImage(bitmap))
+						{
+							g.DrawImage(img1, 0, 0);
+							g.DrawImage(img2, img1.Width, 0);
+						}
+						bitmap.Save(filename);
+					} catch (IOException e) {
+						MainWindow.ShowMessage("Error saving file: " + e.Message);
+					}
+				}
+			};
+			settingsGroup.Controls.Add (saveGraphsImageButton);
+
+			graphsBox = new PictureBox ();
+			graphsBox.Image = Image.FromFile ("graphs.png");
+			Controls.Add (graphsBox);
+			graphsBox.SizeMode = PictureBoxSizeMode.Zoom;
+
+			graphROC = new PictureBox ();
+			graphROC.Image = Image.FromFile ("graphs.png");
+			Controls.Add (graphROC);
+			graphROC.SizeMode = PictureBoxSizeMode.Zoom;
+
+			graphSimilarity = new PictureBox ();
+			graphSimilarity.Image = Image.FromFile ("graphs.png");
+			//Controls.Add (graphSimilarity);
+			graphSimilarity.SizeMode = PictureBoxSizeMode.Zoom;
+
+			activityGroup = new GroupBox ();
+			activityGroup.Text = "Spatial-temporal map";
+			Controls.Add (activityGroup);
+
+			activityMaxSize = new NumericUpDown ();
+			activityMaxSize.Minimum = 0m;
+			activityMaxSize.Maximum = .25m;
+			activityMaxSize.DecimalPlaces = 3;
+			activityMaxSize.Increment = .01m;
+			activityMaxSize.Value = .1m;
+			activityMaxSize.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			activityGroup.Controls.Add (activityMaxSize);
+
+			showActivityBackground = new CheckBox ();
+			showActivityBackground.Text = "Show background image";
+			showActivityBackground.Checked = false;
+			showActivityBackground.CheckedChanged += delegate {
+				ShowGraphs ();
+			};
+			activityGroup.Controls.Add (showActivityBackground);
+
+			showActivityLabels = new CheckBox ();
+			showActivityLabels.Text = "Show cell labels";
+			showActivityLabels.Checked = false;
+			showActivityLabels.CheckedChanged += delegate {
+				ShowGraphs ();
+			};
+			activityGroup.Controls.Add (showActivityLabels);
+
+			showActivityLegend = new CheckBox ();
+			showActivityLegend.Text = "Show legend";
+			showActivityLegend.Checked = false;
+			showActivityLegend.CheckedChanged += delegate {
+				ShowGraphs ();
+			};
+			activityGroup.Controls.Add (showActivityLegend);
+
+			saveActivityImageButton = new Button ();
+			saveActivityImageButton.Text = "Save image";
+			saveActivityImageButton.Click += delegate {
+				DialogResult result = saveImageDialog.ShowDialog(); // Show the dialog.
+				if (result == DialogResult.OK) // Test result.
+				{
+					string filename = saveImageDialog.FileName;
+					try
+					{
+						Image img;
+						int w = imageMatrixCollection.images [0].width;
+						int h = imageMatrixCollection.images [0].height;
+						if (showActivityBackground.Checked) {
+							img = imageMatrixCollection.cellActivityContainer.GetActivityMap (w, h, w, h, (float)activityMaxSize.Value, showActivityLabels.Checked,
+								showActivityLegend.Checked, imageMatrixCollection.images[0].Bitmap);
+						} else {
+							img = imageMatrixCollection.cellActivityContainer.GetActivityMap (w, h, w, h, (float)activityMaxSize.Value, showActivityLabels.Checked,
+								showActivityLegend.Checked);
+						}
+						img.Save(filename);
+					} catch (IOException e) {
+						MainWindow.ShowMessage("Error saving file: " + e.Message);
+					}
+				}
+			};
+			activityGroup.Controls.Add (saveActivityImageButton);
+
+
+			mapActivity = new PictureBox ();
+			mapActivity.Image = Image.FromFile ("graphs.png");
+			mapActivity.SizeMode = PictureBoxSizeMode.Zoom;
+			activityGroup.Controls.Add (mapActivity);
+
+			connectionGroup = new GroupBox ();
+			connectionGroup.Text = "Inter-neuronal connections";
+			Controls.Add (connectionGroup);
+
+			test1 = new GroupBox ();
+			test1.Text = "Test 1";
+			Controls.Add (test1);
+
+			test2 = new GroupBox ();
+			test2.Text = "Test 1";
+			Controls.Add (test2);
+
+			connectionDistance = new NumericUpDown ();
+			connectionDistance.Minimum = 0m;
+			connectionDistance.Maximum = 1m;
+			connectionDistance.DecimalPlaces = 2;
+			connectionDistance.Increment = .01m;
+			connectionDistance.Value = .1m;
+			connectionDistance.ValueChanged += delegate {
+				ShowConnectionMap ();
+			};
+			connectionGroup.Controls.Add (connectionDistance);
+
+			connectionDt = new NumericUpDown ();
+			connectionDt.Minimum = 0m;
+			connectionDt.Maximum = 100m;
+			connectionDt.DecimalPlaces = 0;
+			connectionDt.Increment = 1m;
+			connectionDt.Value = 1m;
+			connectionDt.ValueChanged += delegate {
+				ShowConnectionMap ();
+			};
+			connectionGroup.Controls.Add (connectionDt);
+
+			connectionTreshold = new NumericUpDown ();
+			connectionTreshold.Minimum = 0m;
+			connectionTreshold.Maximum = 1m;
+			connectionTreshold.DecimalPlaces = 2;
+			connectionTreshold.Increment = .1m;
+			connectionTreshold.Value = .33m;
+			connectionTreshold.ValueChanged += delegate {
+				ShowConnectionMap ();
+			};
+			connectionGroup.Controls.Add (connectionTreshold);
+
+			showConnectionBackground = new CheckBox ();
+			showConnectionBackground.Text = "Show background image";
+			showConnectionBackground.Checked = false;
+			showConnectionBackground.CheckedChanged += delegate {
+				ShowConnectionMap ();
+			};
+			connectionGroup.Controls.Add (showConnectionBackground);
+
+			showConnectionLabels = new CheckBox ();
+			showConnectionLabels.Text = "Show cell labels";
+			showConnectionLabels.Checked = false;
+			showConnectionLabels.CheckedChanged += delegate {
+				ShowConnectionMap ();
+			};
+			connectionGroup.Controls.Add (showConnectionLabels);
+
+			saveConnectionImageButton = new Button ();
+			saveConnectionImageButton.Text = "Save image";
+			saveConnectionImageButton.Click += delegate {
+				DialogResult result = saveImageDialog.ShowDialog(); // Show the dialog.
+				if (result == DialogResult.OK) // Test result.
+				{
+					string filename = saveImageDialog.FileName;
+					try
+					{
+						Image img;
+						int w = imageMatrixCollection.images [0].width;
+						int h = imageMatrixCollection.images [0].height;
+						if (showConnectionBackground.Checked) {
+							img = imageMatrixCollection.cellActivityContainer.GetConnectionMap (w, h, w, h, shownCells,
+								(float)connectionDistance.Value, (int)connectionDt.Value, (float)connectionTreshold.Value,
+								showConnectionLabels.Checked, imageMatrixCollection.images [0].Bitmap);
+						} else {
+							img = imageMatrixCollection.cellActivityContainer.GetConnectionMap (w, h, w, h, shownCells,
+								(float)connectionDistance.Value, (int)connectionDt.Value, (float)connectionTreshold.Value, showConnectionLabels.Checked);
+						}
+						img.Save(filename);
+					} catch (IOException e) {
+						MainWindow.ShowMessage("Error saving file: " + e.Message);
+					}
+				}
+			};
+			connectionGroup.Controls.Add (saveConnectionImageButton);
+
+			SaveFileDialog saveConnectionDialog = new SaveFileDialog ();
+			saveConnectionDialog.DefaultExt = "csv";
+			saveConnectionDialog.AddExtension = true;
+			saveConnectionDialog.Filter = "CSV data|*.csv";
+			saveConnectionDialog.InitialDirectory = Directory.GetCurrentDirectory ();
+
+			saveConnectionDataButton = new Button ();
+			saveConnectionDataButton.Text = "Save connection data";
+			saveConnectionDataButton.Click += delegate {
+				DialogResult result = saveConnectionDialog.ShowDialog(); // Show the dialog.
+				if (result == DialogResult.OK) // Test result.
+				{
+					string filename = saveConnectionDialog.FileName;
+					try
+					{
+						int w = imageMatrixCollection.images [0].width;
+						int h = imageMatrixCollection.images [0].height;
+						string data = imageMatrixCollection.cellActivityContainer.GetConnectionData(w, h, shownCells,
+							(float)connectionDistance.Value, (int)connectionDt.Value, (float)connectionTreshold.Value);
+						File.WriteAllText(filename,data);
+					} catch (IOException e) {
+						MainWindow.ShowMessage("Error saving file: " + e.Message);
+					}
+				}
+			};
+			connectionGroup.Controls.Add (saveConnectionDataButton);
+
+			mapConnections = new PictureBox ();
+			mapConnections.Image = Image.FromFile ("graphs.png");
+			mapConnections.SizeMode = PictureBoxSizeMode.Zoom;
+			connectionGroup.Controls.Add (mapConnections);
+
+			graph1Label = new Label ();
+			graph1Label.Text = "Activity";
+			Controls.Add (graph1Label);
+
+			graph2Label = new Label ();
+			graph2Label.Text = "Rate of change";
+			Controls.Add (graph2Label);
+
+			correlationGroup = new GroupBox ();
+			correlationGroup.Text = "Cross-Correlation";
+			Controls.Add (correlationGroup);
+
+			similarityMode = new ComboBox ();
+			similarityMode.Items.Add (SimilarityMeasure.BarGraphXCorr);
+			similarityMode.Items.Add (SimilarityMeasure.SquareMapXCorr);
+			similarityMode.Items.Add (SimilarityMeasure.SingleCellXCorr);
+			similarityMode.Items.Add (SimilarityMeasure.Heatmap);
+			similarityMode.SelectedIndex = 0;
+			similarityMode.SelectedIndexChanged += delegate {
+				ShowGraphs();
+			};
+			correlationGroup.Controls.Add (similarityMode);
+
+			similaritySource = new ComboBox ();
+			similaritySource.Items.Add (SimilaritySource.Peak);
+			similaritySource.Items.Add (SimilaritySource.RateOfChange);
+			similaritySource.Items.Add (SimilaritySource.Activity);
+			similaritySource.SelectedIndex = 0;
+			similaritySource.SelectedIndexChanged += delegate {
+				ShowGraphs();
+			};
+			correlationGroup.Controls.Add (similaritySource);
+
+			xCorrDelayLabel = new Label ();
+			xCorrDelayLabel.Text = "Lag: ";
+			correlationGroup.Controls.Add (xCorrDelayLabel);
+
+			xCorrDelay = new NumericUpDown ();
+			xCorrDelay.DecimalPlaces = 0;
+			xCorrDelay.Minimum = -100;
+			xCorrDelay.Maximum = 100;
+			xCorrDelay.Value = 0;
+			xCorrDelay.ValueChanged += delegate {
+				ShowGraphs ();
+			};
+			correlationGroup.Controls.Add (xCorrDelay);
+
+			saveCorrelationImageButton = new Button ();
+			saveCorrelationImageButton.Text = "Save image";
+			saveCorrelationImageButton.Click += delegate {
+				DialogResult result = saveImageDialog.ShowDialog(); // Show the dialog.
+				if (result == DialogResult.OK) // Test result.
+				{
+					string filename = saveImageDialog.FileName;
+					try
+					{
+						//we can just save the image shown, UNLESS it's the square map, which is downscaled.
+						if ((SimilarityMeasure)similarityMode.SelectedItem == SimilarityMeasure.SquareMapXCorr) {
+							CellActivityContainer cac = imageMatrixCollection.cellActivityContainer;
+							List<BrainCell> selectedBrainCells = new List<BrainCell> ();
+							foreach (BrainCell b in cellsListBox.SelectedItems) {
+								selectedBrainCells.Add (b);
+							}
+							cac.GetCorrelationSquareGraph(selectedBrainCells, 0, 0, (SimilaritySource)similaritySource.SelectedItem, (int)xCorrDelay.Value).Save(filename);
+						} else {
+							graphSimilarity.Image.Save(filename);
+						}
+					} catch (IOException e) {
+						MainWindow.ShowMessage("Error saving file: " + e.Message);
+					}
+				}
+			};
+			correlationGroup.Controls.Add (saveCorrelationImageButton);
+
+
+			shownCells = imageMatrixCollection.allCells;
+			ShowCells ();
+
+			//first load the tooltip for use in the various panels
+			ToolTip = new ToolTip();
+			// Set up the delays for the ToolTip.
+			ToolTip.AutoPopDelay = 10000;
+			ToolTip.InitialDelay = 500;
+			ToolTip.ReshowDelay = 250;
+			ToolTip.ToolTipIcon = ToolTipIcon.Info;
+			// Force the ToolTip text to be displayed whether or not the form is active.
+			ToolTip.ShowAlways = true;
+			ToolTip.SetToolTip (pulseThreshold, "Show all cells with at least this amount of peaks.");
+			ToolTip.SetToolTip (settingPeakTreshold, "Peaks will only be detected if the rate of change is more than this value.");
+			ToolTip.SetToolTip (settingLag, "The lag for the Z-score algorithm. The standard deviation is calculated for this amount of frames prior to the frame under consideration.");
+			ToolTip.SetToolTip (settingTreshold, "The Z-score needed for a peak detection.");
+			ToolTip.SetToolTip (settingInfluence, "Detected peaks will be multiplied by this value in the peak detection for futher frames. Set this to a low value if peaks happen soon after another.");
+			ToolTip.SetToolTip (connectionDistance, "Max. distance between cells to still consider a possible connection.\nIn fraction of the image diagonal.");
+			ToolTip.SetToolTip (connectionDt, "The max. offset in frames to still consider.\n");
+			ToolTip.SetToolTip (connectionTreshold, "The minimum similarity between peaks (exclusive).\n");
+			ToolTip.SetToolTip (activityMaxSize, "The size of the largest circles, in times the diagonal.");
+			ToolTip.SetToolTip (xCorrDelay, "The lag to calculate the cross-correlation for.");
+			ToolTip.SetToolTip (similaritySource, "The data used for calculations. Activity is the plain activity graph, RateOfChange is the rate of change graph and Peak is an array with the elements being 1 for each peak frame and 0 otherwise.");
+			ToolTip.SetToolTip (detectionMode, "How peaks are detected. Slope will only detect the first frame of a peak. Block will, in some cases, detect all peak frames.");
+
+			/*
+
+		NumericUpDown pulseThreshold, settingPeakTreshold, settingLag, settingTreshold, settingInfluence, connectionDistance,
+			connectionDt, connectionTreshold, activityMaxSize, xCorrDelay;
+
+		ComboBox similarityMode;
+		ComboBox similaritySource;
+		ComboBox detectionMode;
+			*/
+
+			Resize += delegate {
+				ResizeWindow ();
+			};
+
+			ResizeWindow ();
+		}
+
+		void ShowCells () {
+			//temporarily block cell selection
+			cellsListBox.SelectedIndexChanged -= CellsSelectedEvent;
+			List<BrainCell> selectedCells = new List<BrainCell> ();
+			foreach (object o in cellsListBox.SelectedItems) {
+				selectedCells.Add ((BrainCell)o);
+			}
+			cellsListBox.Items.Clear ();
+			ListBox.ObjectCollection cellsCollection = new ListBox.ObjectCollection (cellsListBox, shownCells.ToArray ());
+			cellsListBox.Items.AddRange (cellsCollection);
+			foreach (BrainCell c in selectedCells) {
+				int index = shownCells.IndexOf (c);
+				if (index >= 0) {
+					cellsListBox.SetSelected (index, true);
+				}
+			}
+			//re-enable cell selection
+			cellsListBox.SelectedIndexChanged += CellsSelectedEvent;
+		}
+
+		public void ShowWindow () {
+			Show ();
+			ShowGraphs ();
+		}
+
+		void CellsSelectedEvent (Object o, EventArgs e) {
+			ShowGraphs ();
+		}
+
+		void UpdateGraphs () {
+			List<BrainCell> newCells = new List<BrainCell> ();
+			int threshold = (int)pulseThreshold.Value;
+			bool multiPeak;
+			if ((PeakMode)detectionMode.SelectedItem == PeakMode.Slope) {
+				multiPeak = false;
+			} else {
+				multiPeak = true;
+			}
+
+			imageMatrixCollection.cellActivityContainer.CalculatePulseFrames (255f * (float)settingPeakTreshold.Value,
+				(int)settingLag.Value,(float)settingTreshold.Value,(float)settingInfluence.Value, multiPeak);
+
+			foreach (BrainCell c in imageMatrixCollection.allCells) {
+				if (imageMatrixCollection.cellActivityContainer.GetCellPeakFrameCount(c) >= threshold) {
+					newCells.Add (c);
+				}
+			}
+			shownCells = newCells;
+
+			ShowCells ();
+		}
+
+		void ShowGraphs () {
+			if (cellsListBox.SelectedIndex < 0) {
+				cellsListBox.ClearSelected ();
+			}
+			bool multiPeak;
+			if ((PeakMode)detectionMode.SelectedItem == PeakMode.Slope) {
+				multiPeak = false;
+			} else {
+				multiPeak = true;
+			}
+
+			imageMatrixCollection.cellActivityContainer.CalculatePulseFrames (255f * (float)settingPeakTreshold.Value,
+				(int)settingLag.Value,(float)settingTreshold.Value,(float)settingInfluence.Value, multiPeak);
+
+			List<BrainCell> selectedBrainCells = new List<BrainCell> ();
+			foreach (BrainCell b in cellsListBox.SelectedItems) {
+				selectedBrainCells.Add (b);
+			}
+			CellActivityContainer cac = imageMatrixCollection.cellActivityContainer;
+			graphsBox.Image = cac.GetGraph (selectedBrainCells, graphsBox.Width, graphsBox.Height, GraphType.Activity, 
+				true,showPeaks.Checked);
+			graphROC.Image = cac.GetGraph (selectedBrainCells, graphROC.Width, graphROC.Height, GraphType.RateOfChange, 
+				true,showPeaks.Checked);
+			switch ((SimilarityMeasure)similarityMode.SelectedItem) {
+			case SimilarityMeasure.BarGraphXCorr:
+				graphSimilarity.Image = cac.GetCorrelationBarGraph (selectedBrainCells, graphSimilarity.Width, graphSimilarity.Height, 
+					(SimilarityMeasure)similarityMode.SelectedItem,	(SimilaritySource)similaritySource.SelectedItem);
+				break;
+			case SimilarityMeasure.SquareMapXCorr:
+				graphSimilarity.Image = cac.GetCorrelationSquareGraph (selectedBrainCells, graphSimilarity.Width, graphSimilarity.Height,
+					(SimilaritySource)similaritySource.SelectedItem, (int)xCorrDelay.Value);
+				break;
+			case SimilarityMeasure.SingleCellXCorr:
+				graphSimilarity.Image = cac.GetCorrelationVoronoiGraph (selectedBrainCells, (SimilaritySource)similaritySource.SelectedItem, (int)xCorrDelay.Value);
+				break;
+			case SimilarityMeasure.Heatmap:
+				graphSimilarity.Image = cac.GetHeatMap (imageMatrixCollection.footageSize.Width, imageMatrixCollection.footageSize.Height, (SimilaritySource)similaritySource.SelectedItem);
+				break;
+			}
+
+			UpdateGraphs ();
+			if (showActivityBackground.Checked) {
+				mapActivity.Image = cac.GetActivityMap (mapActivity.Width, mapActivity.Height, imageMatrixCollection.images [0].width,
+					imageMatrixCollection.images [0].height, (float)activityMaxSize.Value, showActivityLabels.Checked, showActivityLegend.Checked, imageMatrixCollection.images[0].Bitmap);
+			} else {
+				mapActivity.Image = cac.GetActivityMap (mapActivity.Width, mapActivity.Height, imageMatrixCollection.images [0].width,
+					imageMatrixCollection.images [0].height, (float)activityMaxSize.Value, showActivityLabels.Checked, showActivityLegend.Checked);
+			}
+			ShowConnectionMap ();
+		}
+
+		void ShowConnectionMap () {
+			if (showConnectionBackground.Checked) {
+				mapConnections.Image = imageMatrixCollection.cellActivityContainer.GetConnectionMap (mapConnections.Width, mapConnections.Height,
+					imageMatrixCollection.images [0].width, imageMatrixCollection.images [0].height, shownCells,
+					(float)connectionDistance.Value, (int)connectionDt.Value, (float)connectionTreshold.Value,
+					showConnectionLabels.Checked, imageMatrixCollection.images [0].Bitmap);
+			} else {
+				mapConnections.Image = imageMatrixCollection.cellActivityContainer.GetConnectionMap (mapConnections.Width, mapConnections.Height,
+					imageMatrixCollection.images [0].width, imageMatrixCollection.images [0].height, shownCells,
+					(float)connectionDistance.Value, (int)connectionDt.Value, (float)connectionTreshold.Value, showConnectionLabels.Checked);
+			}
+		}
+
+		void RemoveIdle () {
+			List<BrainCell> newCells = new List<BrainCell> ();
+			int threshold = (int)pulseThreshold.Value;
+			bool multiPeak;
+			if ((PeakMode)detectionMode.SelectedItem == PeakMode.Slope) {
+				multiPeak = false;
+			} else {
+				multiPeak = true;
+			}
+
+			imageMatrixCollection.cellActivityContainer.CalculatePulseFrames (255f * (float)settingPeakTreshold.Value,
+				(int)settingLag.Value,(float)settingTreshold.Value,(float)settingInfluence.Value, multiPeak);
+			
+			foreach (BrainCell c in imageMatrixCollection.allCells) {
+				if (imageMatrixCollection.cellActivityContainer.GetCellPeakFrameCount(c) >= threshold) {
+					newCells.Add (c);
+				}
+			}
+			shownCells = newCells;
+
+			ShowCells ();
+		}
+
+		public void ResizeWindow () {
+			detectionStageButton.Top = 0;
+			detectionStageButton.Left = 0;
+			detectionStageButton.Width = 128;
+
+			exportCSVButton.Top = detectionStageButton.Bottom;
+			exportCSVButton.Left = 0;
+			exportCSVButton.Width = 128;
+
+			listLabel.Top = exportCSVButton.Bottom;
+			listLabel.Width = TextRenderer.MeasureText (listLabel.Text, Utils.font).Width + 4;
+			listLabel.Left = 0;
+
+			pulseThreshold.Top = exportCSVButton.Bottom;
+			pulseThreshold.Left = listLabel.Right;
+			pulseThreshold.Width = 128 - listLabel.Width;
+
+			selectAllButton.Top = pulseThreshold.Bottom;
+			selectAllButton.Left = 0;
+			selectAllButton.Width = 128;
+
+			cellsListBox.Left = 0;
+			cellsListBox.Top = selectAllButton.Bottom;
+			cellsListBox.Width = 128;
+			cellsListBox.Height = DisplayRectangle.Height - selectAllButton.Bottom;
+
+			settingsGroup.Left = cellsListBox.Right;
+			settingsGroup.Top = 0;
+			settingsGroup.Height = settingsGroup.Height - settingsGroup.DisplayRectangle.Height + settingLag.Height + showPeaks.Height;
+			settingsGroup.Width = 256 * 2;
+
+			settingLag.Left = settingsGroup.DisplayRectangle.Left;
+			settingLag.Top = settingsGroup.DisplayRectangle.Top;
+			settingLag.Width = settingsGroup.DisplayRectangle.Width / 4;
+
+			settingTreshold.Left = settingLag.Right;
+			settingTreshold.Top = settingLag.Top;
+			settingTreshold.Width = settingsGroup.DisplayRectangle.Width / 4;
+
+			settingInfluence.Left = settingTreshold.Right;
+			settingInfluence.Top = settingLag.Top;
+			settingInfluence.Width = settingsGroup.DisplayRectangle.Width / 4;
+
+			settingPeakTreshold.Left = settingInfluence.Right;
+			settingPeakTreshold.Top = settingLag.Top;
+			settingPeakTreshold.Width = settingsGroup.DisplayRectangle.Width / 4;
+
+			showPeaks.Left = settingsGroup.DisplayRectangle.Left;
+			showPeaks.Top = settingLag.Bottom;
+
+			detectionMode.Left = showPeaks.Right;
+			detectionMode.Top = showPeaks.Top;
+
+			saveGraphsImageButton.Left = detectionMode.Right;
+			saveGraphsImageButton.Top = showPeaks.Top;
+
+			graph1Label.Left = cellsListBox.Right;
+			graph1Label.Top = settingsGroup.Bottom;
+
+			graphsBox.Left = cellsListBox.Right;
+			graphsBox.Top = graph1Label.Bottom;
+			graphsBox.Height = DisplayRectangle.Height - settingsGroup.Height - graph1Label.Height;
+			graphsBox.Width = 256;
+
+			graph2Label.Left = graphsBox.Right;
+			graph2Label.Top = settingsGroup.Bottom;
+
+			graphROC.Left = graphsBox.Right;
+			graphROC.Top = graph2Label.Bottom;
+			graphROC.Height = DisplayRectangle.Height - settingsGroup.Height - graph2Label.Height;
+			graphROC.Width = 256;
+
+			correlationGroup.Left = graphROC.Right;
+			correlationGroup.Top = 0;
+			correlationGroup.Width = 256;
+			correlationGroup.Height = correlationGroup.Height + similarityMode.Height + similaritySource.Height + xCorrDelay.Height + saveCorrelationImageButton.Height - correlationGroup.DisplayRectangle.Height;
+
+			similarityMode.Left = correlationGroup.DisplayRectangle.Left;
+			similarityMode.Top = correlationGroup.DisplayRectangle.Top;
+			similarityMode.Width = correlationGroup.DisplayRectangle.Width;
+
+			similaritySource.Left = correlationGroup.DisplayRectangle.Left;
+			similaritySource.Top = similarityMode.Bottom;
+			similaritySource.Width = correlationGroup.DisplayRectangle.Width;
+
+			xCorrDelayLabel.Left = correlationGroup.DisplayRectangle.Left;
+			xCorrDelayLabel.Width = TextRenderer.MeasureText (xCorrDelayLabel.Text, Utils.font).Width;
+			xCorrDelayLabel.Top = similaritySource.Bottom;
+
+			xCorrDelay.Left = xCorrDelayLabel.Right;
+			xCorrDelay.Top = xCorrDelayLabel.Top;
+
+			saveCorrelationImageButton.Left = correlationGroup.DisplayRectangle.Left;
+			saveCorrelationImageButton.Top = xCorrDelay.Bottom;
+			saveCorrelationImageButton.Width = correlationGroup.DisplayRectangle.Width;
+
+			graphSimilarity.Left = graphROC.Right;
+			graphSimilarity.Top = correlationGroup.Bottom;
+			graphSimilarity.Height = DisplayRectangle.Height - correlationGroup.Bottom;
+			graphSimilarity.Width = 256;
+
+			activityGroup.Top = 0;
+			activityGroup.Left = graphROC.Right;
+			activityGroup.Width = (DisplayRectangle.Width - graphROC.Right)/2;
+			activityGroup.Height = DisplayRectangle.Height / 2;
+
+			activityMaxSize.Top = activityGroup.DisplayRectangle.Top;
+			activityMaxSize.Left = activityGroup.DisplayRectangle.Left;
+			activityMaxSize.Width = 64;
+
+			showActivityBackground.Top = activityGroup.DisplayRectangle.Top;
+			showActivityBackground.Left = activityMaxSize.Right;
+
+			showActivityLabels.Top = showActivityBackground.Top;
+			showActivityLabels.Left = showActivityBackground.Right;
+
+			showActivityLegend.Top = showActivityBackground.Top;
+			showActivityLegend.Left = showActivityLabels.Right;
+
+			saveActivityImageButton.Top = showActivityBackground.Top;
+			saveActivityImageButton.Left = showActivityLegend.Right;
+
+			mapActivity.Left = activityGroup.DisplayRectangle.Left;
+			mapActivity.Top = showActivityBackground.Bottom;
+			mapActivity.Height = activityGroup.DisplayRectangle.Bottom - showActivityBackground.Bottom;
+			mapActivity.Width = activityGroup.DisplayRectangle.Width;
+
+			connectionGroup.Top = activityGroup.Bottom;
+			connectionGroup.Left = activityGroup.Left;
+			connectionGroup.Width = activityGroup.Width;
+			connectionGroup.Height = DisplayRectangle.Height - connectionGroup.Top;
+
+			test1.Left = activityGroup.Right;
+			test1.Width = DisplayRectangle.Width - activityGroup.Right;
+			test1.Height = activityGroup.Height;
+			test1.Top = activityGroup.Top;
+
+			test2.Left = test1.Left;
+			test2.Width = test1.Width;
+			test2.Height = test1.Height;
+			test2.Top = test1.Bottom;
+
+			connectionDistance.Top = connectionGroup.DisplayRectangle.Top;
+			connectionDistance.Left = connectionGroup.DisplayRectangle.Left;
+			connectionDistance.Width = 64;
+
+			connectionDt.Top = connectionGroup.DisplayRectangle.Top;
+			connectionDt.Left = connectionDistance.Right;
+			connectionDt.Width = 64;
+
+			connectionTreshold.Top = connectionGroup.DisplayRectangle.Top;
+			connectionTreshold.Left = connectionDt.Right;
+			connectionTreshold.Width = 64;
+
+			showConnectionBackground.Top = connectionGroup.DisplayRectangle.Top;
+			showConnectionBackground.Left = connectionTreshold.Right;
+
+			showConnectionLabels.Top = showConnectionBackground.Top;
+			showConnectionLabels.Left = showConnectionBackground.Right;
+
+			saveConnectionImageButton.Top = showConnectionBackground.Top;
+			saveConnectionImageButton.Left = showConnectionLabels.Right;
+
+			saveConnectionDataButton.Top = showConnectionBackground.Top;
+			saveConnectionDataButton.Left = saveConnectionImageButton.Right;
+
+			mapConnections.Left = connectionGroup.DisplayRectangle.Left;
+			mapConnections.Top = showConnectionBackground.Bottom;
+			mapConnections.Height = connectionGroup.DisplayRectangle.Bottom - showConnectionBackground.Bottom;
+			mapConnections.Width = connectionGroup.DisplayRectangle.Width;
+		}
+
+		protected override void OnClosed (EventArgs e)
+		{
+			base.OnClosed (e);
+			mainWindow.Quit();
+		}
+
+		public void SetTutorialControls (ref Control[] buttons, ref List<Control>[] controls) {
+			buttons [5] = pulseThreshold;
+			buttons [6] = cellsListBox;
+			controls [5] = new List<Control> ();
+			controls [5].Add (pulseThreshold);
+			controls [6] = new List<Control> ();
+			controls [6].Add (cellsListBox);
+			controls [7] = new List<Control> ();
+			controls [7].Add (settingsGroup);
+		}
+	}
+}
+
