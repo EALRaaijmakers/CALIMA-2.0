@@ -7,7 +7,10 @@ Downloading and extracting the folder CALIMA 2.0 > CalciumImagingAnalyser > bin 
 For developers, the entire CalciumImagingAnalyser folder is required to start working with CALIMA 2.0. 
 
 SOURCES
-The previous version of CALIMA (v1.0) has been published, please include a citation to (open-access paper included in folder): 
+The most recent version of CALIMA (v2.0) has been published, please include a citation to (open-access paper included in folder):
+Raaijmakers, E.A.L.; Wanders, N.; Mestrom, R.M.C.; Luttge, R. Analyzing Developing Brain-On-Chip Cultures with the CALIMA Calcium Imaging Tool. Micromachines 2021, 12, 412. https://doi.org/10.3390/mi12040412
+
+The previous version of CALIMA (v1.0) has been published as well (open-access paper included in folder): 
 F.D.W. Radstake, E.A.L. Raaijmakers, R. Luttge, S. Zinger, J.P. Frimat, CALIMA: The semi-automated open-source calcium imaging analyzer, Computer Methods and Programs in Biomedicine, Volume 179, 2019, 104991, ISSN 0169-2607, https://doi.org/10.1016/j.cmpb.2019.104991. (https://www.sciencedirect.com/science/article/pii/S0169260718313701) .
 
 DATASET
